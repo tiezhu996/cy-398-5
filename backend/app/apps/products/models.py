@@ -12,3 +12,11 @@ class Product(models.Model):
     weight_kg = models.FloatField(default=1)
     is_on_sale = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class Favorite(models.Model):
+    user_id = models.BigIntegerField()
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name="favorites")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("user_id", "product")

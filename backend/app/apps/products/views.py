@@ -1,9 +1,10 @@
 from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
-from rest_framework import viewsets
+from django.db.models import Count
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from app.apps.products.models import Product
-from app.apps.products.serializers import ProductSerializer
+from app.apps.products.models import Product, Favorite
+from app.apps.products.serializers import ProductSerializer, FavoriteSerializer
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all().order_by("-created_at")
@@ -29,7 +30,39 @@ class ProductViewSet(viewsets.ModelViewSet):
             qs = qs.order_by("sale_price")
         elif sort == "newest":
             qs = qs.order_by("-created_at")
+        elif sort == "favorite":
+            qs = qs.annotate(fav_count=Count("favorites")).order_by("-fav_count", "-created_at")
         return qs
+
+    @action(detail=True, methods=["post"])
+    def favorite(self, request, pk=None):
+        product = self.get_object()
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"success": False, "code": "VALIDATION_FAILED", "message": "参数不合法"}, status=status.HTTP_400_BAD_REQUEST)
+        fav, created = Favorite.objects.get_or_create(user_id=user_id, product=product)
+        return Response({"success": True, "favorited": created})
+
+    @action(detail=True, methods=["post"])
+    def unfavorite(self, request, pk=None):
+        product = self.get_object()
+        user_id = request.data.get("user_id")
+        if not user_id:
+            return Response({"success": False, "code": "VALIDATION_FAILED", "message": "参数不合法"}, status=status.HTTP_400_BAD_REQUEST)
+        deleted, _ = Favorite.objects.filter(user_id=user_id, product=product).delete()
+        return Response({"success": True, "unfavorited": deleted > 0})
+
+    @action(detail=False, methods=["get"])
+    def my_favorites(self, request):
+        user_id = request.query_params.get("user_id")
+        if not user_id:
+            return Response({"success": False, "code": "VALIDATION_FAILED", "message": "参数不合法"}, status=status.HTTP_400_BAD_REQUEST)
+        fav_product_ids = Favorite.objects.filter(user_id=user_id).order_by("-created_at").values_list("product_id", flat=True)
+        products = Product.objects.filter(id__in=fav_product_ids)
+        product_map = {p.id: p for p in products}
+        ordered_products = [product_map[pid] for pid in fav_product_ids if pid in product_map]
+        serializer = self.get_serializer(ordered_products, many=True)
+        return Response(serializer.data)
 
 class StatsViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
