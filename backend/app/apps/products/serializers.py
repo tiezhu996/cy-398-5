@@ -14,7 +14,10 @@ class ProductSerializer(serializers.ModelSerializer):
         return obj.favorites.count()
 
     def get_is_favorited(self, obj):
-        user_id = self.context.get("request").query_params.get("user_id") if self.context.get("request") else None
+        request = self.context.get("request")
+        if not request:
+            return False
+        user_id = request.query_params.get("user_id") if hasattr(request, "query_params") else request.GET.get("user_id")
         if not user_id:
             return False
         return obj.favorites.filter(user_id=user_id).exists()
